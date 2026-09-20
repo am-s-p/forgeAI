@@ -2,6 +2,7 @@ package com.forgeai.core.api;
 
 import com.forgeai.core.knowledge.DocumentService;
 import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.CrossOrigin;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
@@ -12,6 +13,7 @@ import java.util.Map;
 
 @RestController
 @RequestMapping("/api/documents")
+@CrossOrigin(origins = "http://localhost:5173")
 public class DocumentController {
 
     private final DocumentService documentService;
