@@ -133,13 +133,21 @@ public class AgentOrchestrator {
             
             System.out.println("LLM Response [Iteration " + currentIteration + "]:\n" + responseText);
             
+            // Robust JSON extraction
+            String jsonToParse = responseText;
+            int firstBrace = jsonToParse.indexOf('{');
+            int lastBrace = jsonToParse.lastIndexOf('}');
+            if (firstBrace != -1 && lastBrace != -1 && lastBrace > firstBrace) {
+                jsonToParse = jsonToParse.substring(firstBrace, lastBrace + 1);
+            }
+
             AgentAction action;
             try {
-                action = outputConverter.convert(responseText);
+                action = outputConverter.convert(jsonToParse);
             } catch (Exception e) {
                 System.out.println("LLM generated invalid JSON: " + e.getMessage());
                 springAiMessages.add(new AssistantMessage(responseText));
-                springAiMessages.add(new SystemMessage("Error parsing your JSON output. Please strictly follow the requested JSON schema."));
+                springAiMessages.add(new SystemMessage("Error parsing your JSON output. You must ONLY output a single valid JSON object."));
                 currentIteration++;
                 continue;
             }
