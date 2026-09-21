@@ -63,8 +63,8 @@ export default function DocumentUploader({ onUploadSuccess }) {
       onClick={() => fileInputRef.current?.click()}
       style={{
         border: `2px dashed ${isDragging ? 'var(--accent-color)' : 'var(--panel-border)'}`,
-        background: isDragging ? 'rgba(59, 130, 246, 0.1)' : 'rgba(0, 0, 0, 0.2)',
-        borderRadius: '16px',
+        background: isDragging ? 'var(--panel-border)' : 'var(--input-bg)',
+        borderRadius: '24px',
         padding: '2rem',
         textAlign: 'center',
         cursor: 'pointer',
