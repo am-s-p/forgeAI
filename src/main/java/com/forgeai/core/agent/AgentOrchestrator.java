@@ -3,8 +3,11 @@ package com.forgeai.core.agent;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.forgeai.core.persistence.AgentRun;
+import com.forgeai.core.persistence.AgentRunRepository;
 import com.forgeai.core.persistence.Conversation;
 import com.forgeai.core.persistence.Message;
+import com.forgeai.core.persistence.Task;
+import com.forgeai.core.persistence.TaskRepository;
 import com.forgeai.core.persistence.ToolCall;
 import com.forgeai.core.persistence.ToolCallRepository;
 import com.forgeai.core.tools.ForgeTool;
@@ -27,13 +30,19 @@ public class AgentOrchestrator {
 
     private final ChatModel chatModel;
     private final ToolCallRepository toolCallRepository;
+    private final TaskRepository taskRepository;
+    private final AgentRunRepository agentRunRepository;
     private final Map<String, ForgeTool> tools;
     private final ObjectMapper objectMapper = new ObjectMapper();
     private final BeanOutputConverter<AgentAction> outputConverter;
 
-    public AgentOrchestrator(ChatModel chatModel, ToolCallRepository toolCallRepository, List<ForgeTool> toolList) {
+    public AgentOrchestrator(ChatModel chatModel, ToolCallRepository toolCallRepository, 
+                             TaskRepository taskRepository, AgentRunRepository agentRunRepository,
+                             List<ForgeTool> toolList) {
         this.chatModel = chatModel;
         this.toolCallRepository = toolCallRepository;
+        this.taskRepository = taskRepository;
+        this.agentRunRepository = agentRunRepository;
         this.tools = toolList.stream().collect(Collectors.toMap(ForgeTool::getName, t -> t));
         this.outputConverter = new BeanOutputConverter<>(AgentAction.class);
     }
@@ -44,9 +53,34 @@ public class AgentOrchestrator {
                 .collect(Collectors.joining("\n"));
 
         String format = outputConverter.getFormat();
+        
+        // --- Phase 11: Episodic Memory ---
+        // Fetch past tool calls for this conversation
+        StringBuilder memoryBuilder = new StringBuilder();
+        List<Task> tasks = taskRepository.findByConversationId(conversation.getId());
+        for (Task t : tasks) {
+            List<AgentRun> runs = agentRunRepository.findByTaskId(t.getId());
+            for (AgentRun r : runs) {
+                // don't include the current run since it has no tool calls yet
+                if (r.getId().equals(run.getId())) continue;
+                
+                List<ToolCall> calls = toolCallRepository.findByAgentRunId(r.getId());
+                for (ToolCall c : calls) {
+                    memoryBuilder.append("Tool Used: ").append(c.getToolName()).append("\n");
+                    memoryBuilder.append("Arguments: ").append(c.getArgumentsJson()).append("\n");
+                    memoryBuilder.append("Result: ").append(c.getResultText()).append("\n\n");
+                }
+            }
+        }
+        
+        String memoryContext = memoryBuilder.isEmpty() ? "No past tool executions in this conversation." 
+                : "PAST EPISODIC MEMORY (Do not repeat failed tools):\n" + memoryBuilder.toString();
+
         String systemPromptText = """
                 You are ForgeAI, an advanced agent capable of multi-step reasoning and tool use.
                 Answer the user's request, considering the conversation history.
+                
+                %s
                 
                 You have access to the following tools:
                 %s
@@ -56,7 +90,7 @@ public class AgentOrchestrator {
                 If you have reached the final answer and no more tools are needed, provide 'finalAnswer'.
                 IMPORTANT: You MUST return ONLY valid JSON. DO NOT wrap the JSON in markdown blocks (e.g. ```json). DO NOT include any conversational text before or after the JSON object.
                 %s
-                """.formatted(toolsSchema, format);
+                """.formatted(memoryContext, toolsSchema, format);
 
         List<org.springframework.ai.chat.messages.Message> springAiMessages = new ArrayList<>();
         springAiMessages.add(new SystemMessage(systemPromptText));
@@ -71,18 +105,21 @@ public class AgentOrchestrator {
             }
         }
 
-        int maxIterations = 10;
+        int maxIterations = 5;
         int currentIteration = 0;
 
         while (currentIteration < maxIterations) {
+            // Use JSON format strictly!
             Prompt prompt = new Prompt(springAiMessages);
             String responseText = chatModel.call(prompt).getResult().getOutput().getText();
+            
+            System.out.println("LLM Response [Iteration " + currentIteration + "]:\n" + responseText);
             
             AgentAction action;
             try {
                 action = outputConverter.convert(responseText);
             } catch (Exception e) {
-                // If the LLM failed to format correctly, tell it to try again
+                System.out.println("LLM generated invalid JSON: " + e.getMessage());
                 springAiMessages.add(new AssistantMessage(responseText));
                 springAiMessages.add(new SystemMessage("Error parsing your JSON output. Please strictly follow the requested JSON schema."));
                 currentIteration++;
@@ -130,6 +167,6 @@ public class AgentOrchestrator {
             currentIteration++;
         }
 
-        return "Agent stopped after reaching maximum iterations without providing a final answer.";
+        return "Agent stopped after reaching maximum iterations (" + maxIterations + ") without providing a final answer.";
     }
 }

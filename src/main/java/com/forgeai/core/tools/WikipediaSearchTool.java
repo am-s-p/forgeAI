@@ -35,7 +35,7 @@ public class WikipediaSearchTool implements ForgeTool {
             }
 
             // Wikipedia API: query with generator=search
-            String url = UriComponentsBuilder.fromHttpUrl("https://en.wikipedia.org/w/api.php")
+            String url = UriComponentsBuilder.fromUriString("https://en.wikipedia.org/w/api.php")
                     .queryParam("action", "query")
                     .queryParam("format", "json")
                     .queryParam("prop", "extracts")
