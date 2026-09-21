@@ -25,6 +25,9 @@ import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
 
+import com.forgeai.core.persistence.Feedback;
+import com.forgeai.core.persistence.FeedbackRepository;
+
 @Service
 public class AgentOrchestrator {
 
@@ -32,17 +35,20 @@ public class AgentOrchestrator {
     private final ToolCallRepository toolCallRepository;
     private final TaskRepository taskRepository;
     private final AgentRunRepository agentRunRepository;
+    private final FeedbackRepository feedbackRepository;
     private final Map<String, ForgeTool> tools;
     private final ObjectMapper objectMapper = new ObjectMapper();
     private final BeanOutputConverter<AgentAction> outputConverter;
 
     public AgentOrchestrator(ChatModel chatModel, ToolCallRepository toolCallRepository, 
                              TaskRepository taskRepository, AgentRunRepository agentRunRepository,
+                             FeedbackRepository feedbackRepository,
                              List<ForgeTool> toolList) {
         this.chatModel = chatModel;
         this.toolCallRepository = toolCallRepository;
         this.taskRepository = taskRepository;
         this.agentRunRepository = agentRunRepository;
+        this.feedbackRepository = feedbackRepository;
         this.tools = toolList.stream().collect(Collectors.toMap(ForgeTool::getName, t -> t));
         this.outputConverter = new BeanOutputConverter<>(AgentAction.class);
     }
@@ -76,10 +82,22 @@ public class AgentOrchestrator {
         String memoryContext = memoryBuilder.isEmpty() ? "No past tool executions in this conversation." 
                 : "PAST EPISODIC MEMORY (Do not repeat failed tools):\n" + memoryBuilder.toString();
 
+        // --- Phase 12: Feedback-Driven Learning ---
+        StringBuilder feedbackBuilder = new StringBuilder();
+        List<Feedback> feedbackList = feedbackRepository.findByConversationId(conversation.getId());
+        for (Feedback f : feedbackList) {
+            if (!f.getIsPositive() && f.getCorrectionText() != null && !f.getCorrectionText().isBlank()) {
+                feedbackBuilder.append("- ").append(f.getCorrectionText()).append("\n");
+            }
+        }
+        String feedbackContext = feedbackBuilder.isEmpty() ? "" 
+                : "\nUSER RULES & CORRECTIONS (YOU MUST OBEY THESE STRICTLY):\n" + feedbackBuilder.toString();
+
         String systemPromptText = """
                 You are ForgeAI, an advanced agent capable of multi-step reasoning and tool use.
                 Answer the user's request, considering the conversation history.
                 
+                %s
                 %s
                 
                 You have access to the following tools:
@@ -90,7 +108,7 @@ public class AgentOrchestrator {
                 If you have reached the final answer and no more tools are needed, provide 'finalAnswer'.
                 IMPORTANT: You MUST return ONLY valid JSON. DO NOT wrap the JSON in markdown blocks (e.g. ```json). DO NOT include any conversational text before or after the JSON object.
                 %s
-                """.formatted(memoryContext, toolsSchema, format);
+                """.formatted(memoryContext, feedbackContext, toolsSchema, format);
 
         List<org.springframework.ai.chat.messages.Message> springAiMessages = new ArrayList<>();
         springAiMessages.add(new SystemMessage(systemPromptText));

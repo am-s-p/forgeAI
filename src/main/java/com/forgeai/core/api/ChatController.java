@@ -15,14 +15,27 @@ import org.springframework.web.bind.annotation.RestController;
 public class ChatController {
 
     private final ChatService chatService;
+    private final com.forgeai.core.persistence.FeedbackRepository feedbackRepository;
 
-    public ChatController(ChatService chatService) {
+    public ChatController(ChatService chatService, com.forgeai.core.persistence.FeedbackRepository feedbackRepository) {
         this.chatService = chatService;
+        this.feedbackRepository = feedbackRepository;
     }
 
     @PostMapping
     public ResponseEntity<ChatResponse> chat(@Valid @RequestBody ChatRequest request) {
         ChatResponse response = chatService.chat(request);
         return ResponseEntity.ok(response);
+    }
+
+    @PostMapping("/feedback")
+    public ResponseEntity<Void> submitFeedback(@Valid @RequestBody FeedbackRequest request) {
+        com.forgeai.core.persistence.Feedback feedback = new com.forgeai.core.persistence.Feedback(
+                request.conversationId(),
+                request.isPositive(),
+                request.correctionText()
+        );
+        feedbackRepository.save(feedback);
+        return ResponseEntity.ok().build();
     }
 }
