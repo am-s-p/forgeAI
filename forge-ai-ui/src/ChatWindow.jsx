@@ -14,6 +14,8 @@ export default function ChatWindow() {
     scrollToBottom();
   }, [messages]);
 
+  const [conversationId] = useState(() => crypto.randomUUID());
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (!input.trim() || isLoading) return;
@@ -27,15 +29,15 @@ export default function ChatWindow() {
       const response = await fetch('http://localhost:8080/api/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ message: userMsg, conversationId: "default" })
+        body: JSON.stringify({ message: userMsg, conversationId: conversationId })
       });
       
       const data = await response.json();
       
       setMessages(prev => [...prev, { 
         role: 'agent', 
-        content: data.response,
-        tools: data.toolCalls
+        content: data.plan.actionSteps[0],
+        tools: []
       }]);
     } catch (err) {
       setMessages(prev => [...prev, { role: 'error', content: 'Failed to connect to the agent.' }]);
