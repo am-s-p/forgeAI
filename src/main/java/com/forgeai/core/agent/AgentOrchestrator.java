@@ -54,6 +54,7 @@ public class AgentOrchestrator {
                 FORMAT INSTRUCTIONS:
                 You must follow the format strictly. If you want to use a tool, provide 'toolName' and 'toolArguments'.
                 If you have reached the final answer and no more tools are needed, provide 'finalAnswer'.
+                IMPORTANT: You MUST return ONLY valid JSON. DO NOT wrap the JSON in markdown blocks (e.g. ```json). DO NOT include any conversational text before or after the JSON object.
                 %s
                 """.formatted(toolsSchema, format);
 
